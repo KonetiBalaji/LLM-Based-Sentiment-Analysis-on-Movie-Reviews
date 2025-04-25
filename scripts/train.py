@@ -57,6 +57,14 @@ def preprocess_text(text: str) -> str:
         text,
         flags=re.IGNORECASE
     )
+    text = re.sub(
+        r'\b(not|no|never)\s+(for|to)\s+(\w+)',
+        lambda m: f"NOT_{m.group(3)}",
+        text,
+        flags=re.IGNORECASE
+    )
+    text = re.sub(r'\bnot for (\w+)', lambda m: f"NOT_{m.group(1)}", text, flags=re.IGNORECASE)
+
     return text.lower().strip()
 
 def find_optimal_threshold(y_true, y_proba, optimize_for='f2'):

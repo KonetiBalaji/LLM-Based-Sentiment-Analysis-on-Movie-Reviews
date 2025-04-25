@@ -1,9 +1,12 @@
 default_threshold: 0.5
-features: TF-IDF (10k)
+features: TF-IDF (20k)
 model: LogisticRegression
 ngram_range:
 - 1
-- 2
-optimal_threshold: 0.3122448979591837
+- 3
+optimal_threshold: 0.36122448979591837
 optimize_for: f2
-roc_auc: 0.9487292800000001
+preprocessing:
+  min_length: 3
+  negation_handling: true
+roc_auc: 0.9513888
