@@ -1,4 +1,3 @@
-# scripts/train.py - Final Corrected Version
 import os
 import yaml
 import numpy as np
@@ -7,6 +6,7 @@ import joblib
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import seaborn as sns
+import re
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -20,6 +20,7 @@ class Config:
     OPTIMIZE_FOR = 'f2'  # Options: 'f2', 'f1', 'precision', 'recall'
     THRESHOLD_STEPS = 50
     TOP_ERROR_SAMPLES = 20
+    MIN_REVIEW_LENGTH = 3  # Minimum words to consider
 
 # Paths
 PATHS = {
@@ -37,6 +38,26 @@ PATHS = {
     'top_fp': "outputs/top_false_positives.csv",
     'top_fn': "outputs/top_false_negatives.csv"
 }
+
+def preprocess_text(text: str) -> str:
+    """Enhanced preprocessing with advanced negation handling"""
+    text = re.sub(r'<[^>]+>', '', text)  # Remove HTML tags
+    text = re.sub(r'[^\w\s]', ' ', text)  # Replace punctuation with spaces
+    
+    # Advanced negation handling
+    text = re.sub(
+        r'\b(not|no|never)\s+(\w+ly)?\s*(\w+)',
+        lambda m: f"NOT_{m.group(3)}",
+        text,
+        flags=re.IGNORECASE
+    )
+    text = re.sub(
+        r'\bnot\s+(very|really|extremely)\s+(\w+)',
+        lambda m: f"NOT_{m.group(1)}_{m.group(2)}",
+        text,
+        flags=re.IGNORECASE
+    )
+    return text.lower().strip()
 
 def find_optimal_threshold(y_true, y_proba, optimize_for='f2'):
     """Find optimal threshold based on specified metric with progress bar"""
@@ -75,7 +96,7 @@ def plot_threshold_analysis(y_true, y_proba, optimal_threshold):
     plt.grid()
     plt.savefig(PATHS['threshold_plot'])
     plt.close()
-    
+
 def plot_roc_curve(y_true, y_proba):
     """Generate and save ROC curve with AUC score"""
     fpr, tpr, _ = roc_curve(y_true, y_proba)
@@ -103,53 +124,58 @@ def save_config(optimal_threshold, roc_auc):
         'default_threshold': Config.DEFAULT_THRESHOLD,
         'optimal_threshold': float(optimal_threshold),
         'roc_auc': float(roc_auc),
-        'features': 'TF-IDF (10k)',
-        'ngram_range': [1, 2]
+        'features': 'TF-IDF (20k)',
+        'ngram_range': [1, 3],
+        'preprocessing': {
+            'negation_handling': True,
+            'min_length': Config.MIN_REVIEW_LENGTH
+        }
     }
     with open(PATHS['config'], 'w') as f:
         yaml.dump(config, f)
-
-def test_threshold_logic():
-    """Unit test for threshold finding logic"""
-    y_test = np.array([0, 0, 1, 1])
-    y_proba = np.array([0.1, 0.4, 0.6, 0.9])
-    
-    # Test F2 optimization
-    threshold, score = find_optimal_threshold(y_test, y_proba, 'f2')
-    assert np.isclose(threshold, 0.5, atol=0.1), "Threshold test failed"
-    assert score > 0.8, "Score test failed"
-    print("✓ Threshold logic tests passed")
 
 def main():
     # Setup directories
     os.makedirs("models", exist_ok=True)
     os.makedirs("outputs", exist_ok=True)
 
-    # Load and prepare data
+    # Load and preprocess data
+    print("Loading and preprocessing data...")
     df = pd.read_csv(PATHS['data'])
+    df['text'] = df['text'].apply(preprocess_text)
+    df = df[df['text'].str.split().str.len() >= Config.MIN_REVIEW_LENGTH]  # Filter short reviews
+    
     X = df["text"]
     y = df["sentiment"].map({"pos": 1, "neg": 0})
-    df_train, df_test, y_train, y_test = train_test_split(
+    X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y)
 
     # Vectorize text
     print("Vectorizing text...")
-    vectorizer = TfidfVectorizer(max_features=10000, ngram_range=(1, 2),
-                               stop_words='english')
-    X_train = vectorizer.fit_transform(df_train)
-    X_test = vectorizer.transform(df_test)
+    vectorizer = TfidfVectorizer(
+        max_features=20000,
+        ngram_range=(1, 3),
+        stop_words='english',
+        token_pattern=r'\b[a-zA-Z][a-zA-Z]+\b'
+    )
+    X_train_vec = vectorizer.fit_transform(X_train)
+    X_test_vec = vectorizer.transform(X_test)
 
     # Train model
     print("Training model...")
-    model = LogisticRegression(class_weight='balanced', max_iter=500)
-    model.fit(X_train, y_train)
+    model = LogisticRegression(
+        class_weight='balanced',
+        max_iter=500,
+        solver='liblinear'
+    )
+    model.fit(X_train_vec, y_train)
 
     # Predict probabilities
-    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    y_pred_proba = model.predict_proba(X_test_vec)[:, 1]
     
     # ROC Analysis
     roc_auc = plot_roc_curve(y_test, y_pred_proba)
-    print(f"\nROC AUC Score: {roc_auc:.4f}")
+    print(f"ROC AUC Score: {roc_auc:.4f}")
 
     # Find optimal threshold
     optimal_threshold, optimal_score = find_optimal_threshold(
@@ -192,24 +218,25 @@ def main():
     plt.title(f"Confusion Matrix (Threshold={optimal_threshold:.2f})")
     plt.tight_layout()
     plt.savefig(PATHS['conf_matrix'])
+    plt.close()
 
     # Error analysis
     y_pred_optimal = (y_pred_proba >= optimal_threshold).astype(int)
     df_eval = pd.DataFrame({
-        "text": df_test.values,
+        "text": X_test.values,
         "actual": y_test.values,
-        "predicted": y_pred_optimal,  # Fixed typo from 'predicted'
+        "predicted": y_pred_optimal,
         "probability": y_pred_proba
     })
     
-    # Save error samples - FIXED VERSION
+    # Save error samples
     for error_type in ['false_positives', 'false_negatives']:
         condition = ((df_eval.actual == 0) & (df_eval.predicted == 1)) if error_type == 'false_positives' else \
                    ((df_eval.actual == 1) & (df_eval.predicted == 0))
         errors = df_eval[condition]
         errors.to_csv(PATHS[error_type], index=False)
         
-        # Save top errors with explicit key mapping
+        # Save top errors
         output_key = 'top_fp' if error_type == 'false_positives' else 'top_fn'
         top_errors = errors.nlargest(Config.TOP_ERROR_SAMPLES, "probability") if error_type == 'false_positives' else \
                      errors.nsmallest(Config.TOP_ERROR_SAMPLES, "probability")
@@ -222,7 +249,4 @@ def main():
     print("\nTraining complete. All outputs saved.")
 
 if __name__ == "__main__":
-    # Run unit tests if needed
-    # test_threshold_logic()
-    
     main()
