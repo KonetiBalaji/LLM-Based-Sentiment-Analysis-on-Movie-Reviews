@@ -1,0 +1,15 @@
+batch_size: 4
+data_path: data/processed/imdb_reviews.csv
+early_stopping_patience: 2
+epochs: 1
+learning_rate: 2.0e-05
+max_length: 256
+model_dir: models/bert/
+model_name: bert-base-uncased
+optimal_threshold: 0.36122448979591837
+optimize_metric: f2
+output_dir: outputs/bert/
+seed: 42
+threshold_steps: 50
+val_f2_score: 0.8833333333333333
+weight_decay: 0.01

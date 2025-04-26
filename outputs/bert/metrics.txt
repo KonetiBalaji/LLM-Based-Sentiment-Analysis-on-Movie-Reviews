@@ -1,0 +1,10 @@
+              precision    recall  f1-score   support
+
+         neg       1.00      0.26      0.41        47
+         pos       0.60      1.00      0.75        53
+
+    accuracy                           0.65       100
+   macro avg       0.80      0.63      0.58       100
+weighted avg       0.79      0.65      0.59       100
+
+Optimal Threshold: 0.3612
