@@ -96,3 +96,14 @@ streamlit run scripts/streamlit_app.py
 - Seaborn + Matplotlib
 
 ---
+
+## ⚠️ Note on Large Files
+
+- The directories `data/`, `models/`, and `outputs/` are excluded from version control via `.gitignore` to avoid pushing large datasets, model checkpoints, and generated outputs to the repository.
+- If you need the trained models or datasets, please contact the maintainer or refer to the instructions in the scripts for downloading or generating them.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
